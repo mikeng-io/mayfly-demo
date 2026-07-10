@@ -49,7 +49,7 @@ jobs:
           if [ -n "${API:-}" ]; then
             base="${API%/}"   # strip any trailing slash
             payload=$(printf '{"id":"%s","host":"%s","arch":"%s","kernel":"%s","image":"mayfly-runner","sha":"%s","durMs":%s,"tmp":%s}' \
-              "$GITHUB_RUN_ID" "$host" "$arch" "$kernel" "${GITHUB_SHA:0:7}" "$dur_ms" "$tmp_files")
+              "$GITHUB_RUN_ID" "${RUNNER_NAME:-$host}" "$arch" "$kernel" "${GITHUB_SHA:0:7}" "$dur_ms" "$tmp_files")
             curl -fsS -X POST "$base/receipt" \
               -H "authorization: Bearer ${TOKEN:-}" \
               -H "content-type: application/json" \

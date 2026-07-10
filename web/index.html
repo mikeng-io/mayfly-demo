@@ -142,7 +142,7 @@
     'Mock mode — no control plane wired yet. The lifecycle + receipts below are simulated; deploy Mayfly and set ?api=<url> for live runs.';
 
   const runs = [];
-  const rid = () => Math.random().toString(16).slice(2, 10);
+  const rid = () => 'mayfly-' + (100000000 + Math.floor(Math.random() * 899999999));
   const kernels = ['6.1.112','6.1.97','6.1.75','6.5.0'];
   const short = () => Math.random().toString(16).slice(2, 9);
 
@@ -153,7 +153,7 @@
       ? '<span class="badge done">terminated ✓</span>'
       : `<span class="badge running">${r.state}</span>`;
     return `<div class="card ${cls}">
-      <div class="top"><span class="vmid">microvm-${r.id}</span>${badge}</div>
+      <div class="top"><span class="vmid">${r.id}</span>${badge}</div>
       <div class="grid">
         <div><span>arch</span> <b>${r.arch}</b></div>
         <div><span>kernel</span> <b>Linux ${r.kernel}</b></div>
