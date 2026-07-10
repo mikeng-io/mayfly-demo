@@ -1,0 +1,31 @@
+name: deploy-pages
+# Merge to main -> deploy the site to the production GitHub Pages (gh-pages root).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inject API config (only when MAYFLY_DEMO_API is set)
+        env:
+          API: ${{ vars.MAYFLY_DEMO_API }}
+        run: |
+          if [ -n "${API:-}" ]; then
+            sed -i "s|<!--API-CONFIG-->|<script>window.MAYFLY_API='${API}';</script>|" web/index.html
+          fi
+      - uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./web
+          keep_files: true # preserve pr-preview/ directories

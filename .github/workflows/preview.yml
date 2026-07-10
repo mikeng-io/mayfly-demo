@@ -1,0 +1,31 @@
+name: pr-preview
+# Open/update a PR -> ephemeral preview at  <pages>/pr-preview/pr-<N>/ .  Close -> torn down.
+# (Same-repo branch PRs only — fork PRs get a read-only token and can't publish a preview.)
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: preview-${{ github.event.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inject API config (only when MAYFLY_DEMO_API is set)
+        if: github.event.action != 'closed'
+        env:
+          API: ${{ vars.MAYFLY_DEMO_API }}
+        run: |
+          if [ -n "${API:-}" ]; then
+            sed -i "s|<!--API-CONFIG-->|<script>window.MAYFLY_API='${API}';</script>|" web/index.html
+          fi
+      - uses: rossjrw/pr-preview-action@v1
+        with:
+          source-dir: ./web

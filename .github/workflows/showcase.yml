@@ -4,9 +4,11 @@ name: mayfly-showcase
 # site renders. Plain-shell only — the default mayfly-runner image is the lean variant.
 on:
   workflow_dispatch:
-  # Also fire on pushes so the site shows real project activity.
+  # Fire on pushes and PRs so every change runs its checks in a fresh MicroVM.
   push:
     branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened]
 
 jobs:
   showcase:

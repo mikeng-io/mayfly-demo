@@ -41,6 +41,20 @@ with `web/index.html?api=https://<demo-api-url>`.
 5. Host `web/index.html` (S3+CloudFront / GitHub Pages) and load it with `?api=<ApiUrl>` (or set
    `window.MAYFLY_API`).
 
+## Hosting: GitHub Pages + PR previews
+
+Ephemeral all the way down — each PR gets a throwaway preview, built alongside a throwaway MicroVM:
+
+- **Merge to `main`** → `deploy-pages` publishes `web/` to the production Pages site (gh-pages root).
+- **Open/update a PR** → `pr-preview` publishes to `…/pr-preview/pr-<N>/` and comments the URL; **closing the PR tears it down**.
+- **Every push/PR** → `mayfly-showcase` runs the fingerprint job on a `[self-hosted, mayfly]` runner (one MicroVM per run).
+
+The Pages deploy injects `window.MAYFLY_API` from the repo variable `MAYFLY_DEMO_API` (mock mode if unset).
+
+> **Fork PRs:** GitHub gives fork-PR workflows a read-only token and withholds secrets, so a fork PR can't
+> publish a preview or post a receipt — but its checks still run in an isolated MicroVM (the isolation demo).
+> Same-repo branch PRs get the full treatment. We deliberately avoid `pull_request_target` (a known footgun).
+
 ## Safety (it's a public button)
 
 The public `/trigger` is bounded so it can't become a MicroVM faucet: a global **cooldown** in the API,
