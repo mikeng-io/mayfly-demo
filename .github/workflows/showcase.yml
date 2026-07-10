@@ -1,0 +1,55 @@
+name: mayfly-showcase
+# One job per trigger, run inside a fresh single-use Mayfly MicroVM. It fingerprints
+# the VM it's running in and posts a "receipt" back to the demo API, which the live
+# site renders. Plain-shell only — the default mayfly-runner image is the lean variant.
+on:
+  workflow_dispatch:
+  # Also fire on pushes so the site shows real project activity.
+  push:
+    branches: [main]
+
+jobs:
+  showcase:
+    runs-on: [self-hosted, mayfly]
+    steps:
+      - name: Fingerprint this MicroVM and post the receipt
+        env:
+          API: ${{ vars.MAYFLY_DEMO_API }}          # e.g. https://<demo-api>.lambda-url…on.aws
+          TOKEN: ${{ secrets.MAYFLY_RECEIPT_TOKEN }} # shared secret the API checks
+        run: |
+          set -eu
+          start=$(date +%s.%N)
+          arch="$(uname -m)"                 # aarch64 on Graviton
+          kernel="$(uname -r)"
+          host="$(uname -n)"
+          # Proof this is a fresh, isolated VM: our own kernel + an empty workspace.
+          tmp_files="$(ls -A /tmp 2>/dev/null | wc -l | tr -d ' ')"
+          echo "arch=$arch kernel=$kernel host=$host tmp=$tmp_files"
+          end=$(date +%s.%N)
+          dur_ms=$(awk "BEGIN{printf \"%d\", ($end-$start)*1000}")
+
+          # Human-readable evidence in the GitHub run summary.
+          {
+            echo "### Ran in a fresh Mayfly MicroVM"
+            echo ""
+            echo "| field | value |"
+            echo "|---|---|"
+            echo "| arch | \`$arch\` |"
+            echo "| kernel | \`Linux $kernel\` |"
+            echo "| host | \`$host\` |"
+            echo "| commit | \`${GITHUB_SHA:0:7}\` |"
+            echo "| /tmp entries at start | \`$tmp_files\` (fresh) |"
+            echo ""
+            echo "_This VM existed for exactly one job. It no longer exists._"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Machine-readable receipt for the live site (best-effort; skip if API unset).
+          if [ -n "${API:-}" ]; then
+            base="${API%/}"   # strip any trailing slash
+            payload=$(printf '{"id":"%s","host":"%s","arch":"%s","kernel":"%s","image":"mayfly-runner","sha":"%s","durMs":%s,"tmp":%s}' \
+              "$GITHUB_RUN_ID" "$host" "$arch" "$kernel" "${GITHUB_SHA:0:7}" "$dur_ms" "$tmp_files")
+            curl -fsS -X POST "$base/receipt" \
+              -H "authorization: Bearer ${TOKEN:-}" \
+              -H "content-type: application/json" \
+              -d "$payload" || echo "receipt post failed (non-fatal)"
+          fi
