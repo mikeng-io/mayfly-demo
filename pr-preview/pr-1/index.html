@@ -144,8 +144,9 @@
 
   const runs = [];
   const rid = () => 'mayfly-' + (100000000 + Math.floor(Math.random() * 899999999));
-  // One kernel AND one boot id across every mock run — both are baked into the build
-  // snapshot every VM restores from, so in reality neither varies. Only the MicroVM id,
+  // One kernel across every mock run — it comes from the image, so it never varies. One
+  // boot id too: it is snapshot-level, and holding it fixed shows why it cannot identify a
+  // VM (real runs have been observed sharing one across distinct VMs). Only the MicroVM id,
   // which the control plane assigns per launch, differs run to run.
   const KERNEL = '6.1.166';
   const BOOT_ID = 'cf74049d-e489-47a8-bbe1-5cdaa9ccb253';
@@ -179,16 +180,17 @@
         <div><span>duration</span> <b>${r.dur?fmtDur(r.dur):'…'}</b></div>
         <div><span>at</span> <b>${esc(r.at)}</b></div>
         ${r.tmp!=null ? `<div><span>/tmp at start</span> <b>${esc(r.tmp)} entries</b></div>`:''}
-        ${r.boot ? `<div><span>boot id</span> <b>${esc(String(r.boot).slice(0,8))}…</b> <span>same on every VM</span></div>`:''}
+        ${r.boot ? `<div><span>boot id</span> <b>${esc(String(r.boot).slice(0,8))}…</b> <span>snapshot-level, not per-VM</span></div>`:''}
       </div>
       ${r.state==='destroyed' ? proof(r):''}
     </div>`;
   }
-  // arch/kernel/image are identical on every VM by construction, and so is boot_id — it is
-  // written at boot, which happens before the build snapshot every VM restores from. Measured:
-  // three runs with distinct runner registrations all reported the same boot_id. The MicroVM
-  // id is the only distinguishing value, and it comes from the control plane, not the guest.
-  // Say only what the receipt actually shows.
+  // arch/kernel/image are identical on every VM by construction. boot_id is written before
+  // the build snapshot every VM restores from, so it tracks the snapshot: measured across 7
+  // runs it collided across two VMs with different control-plane ids, then varied for a later
+  // pair. Something that can collide cannot prove distinctness. The MicroVM id is the only
+  // distinguishing value, and it comes from the control plane, not the guest. Say only what
+  // the receipt actually shows.
   function proof(r){
     if (!LIVE) return `<div class="proof">simulated — no MicroVM was launched; ids on this card are fabricated</div>`;
     // Name the actual chain. The VM did not learn its id from AWS: the control plane was
