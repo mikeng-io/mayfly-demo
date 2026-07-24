@@ -41,11 +41,11 @@ jobs:
           # launcher puts it in the runner's environment.
           vm_id="${MAYFLY_MICROVM_ID:-unknown}"
           if [ "$vm_id" = "unknown" ]; then
-            vm_note="(not supplied — control plane predates VM-identity injection)"
+            vm_note="(not supplied — either the VM image or the control plane predates identity injection)"
             vm_claim="_No MicroVM id: this run does not show which VM it ran on._"
           else
-            vm_note="(assigned by AWS per RunMicrovm call — one per job)"
-            vm_claim="_Freshness rests on the MicroVM id: compare it against another run's, and against the control plane's own record._"
+            vm_note="(the control plane gave this VM its id at launch; AWS assigns one per RunMicrovm call)"
+            vm_claim="_Compare this id against another run's: a different id each time is what distinct VMs look like. The control plane holds the matching record._"
           fi
           # /tmp is NOT empty — but not because of leftover state. Observed entries are the
           # Actions runner's own .NET diagnostic sockets (clr-debug-pipe-*, dotnet-diagnostic-*),
