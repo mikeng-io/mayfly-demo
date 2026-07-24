@@ -37,8 +37,12 @@ jobs:
             boot_note="(kernel-generated at boot — differs on every fresh VM)"
             boot_claim="_Freshness rests on the boot id: compare it against another run's._"
           fi
-          # /tmp is NOT empty on a fresh VM — the base image ships a few entries. Record what
-          # is actually there instead of asserting emptiness.
+          # /tmp is NOT empty — but not because of leftover state. Observed entries are the
+          # Actions runner's own .NET diagnostic sockets (clr-debug-pipe-*, dotnet-diagnostic-*),
+          # created by the listener and worker processes in THIS VM during THIS job; the PIDs
+          # are embedded in the names. So the count is never 0, and nothing in it came from a
+          # prior job. List what is actually there rather than asserting either emptiness or
+          # an origin we have not checked.
           tmp_files="$(ls -A /tmp 2>/dev/null | wc -l | tr -d ' ')"
           tmp_entries="$(ls -A /tmp 2>/dev/null | sort | tr '\n' ' ' | sed 's/ $//')"
           echo "arch=$arch kernel=$kernel host=$host boot_id=$boot_id tmp=$tmp_files [$tmp_entries]"
