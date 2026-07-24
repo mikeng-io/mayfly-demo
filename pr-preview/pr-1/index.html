@@ -167,7 +167,7 @@
         <div><span>commit</span> <b>${r.sha}</b></div>
         <div><span>duration</span> <b>${r.dur?fmtDur(r.dur):'…'}</b></div>
         <div><span>at</span> <b>${r.at}</b></div>
-        ${r.tmp!=null ? `<div><span>/tmp at start</span> <b>${r.tmp} base-image entries</b></div>`:''}
+        ${r.tmp!=null ? `<div><span>/tmp at start</span> <b>${r.tmp} entries</b></div>`:''}
       </div>
       ${r.state==='destroyed' ? proof(r):''}
     </div>`;
