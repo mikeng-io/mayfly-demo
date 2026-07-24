@@ -24,18 +24,28 @@ jobs:
           arch="$(uname -m)"                 # aarch64 on Graviton
           kernel="$(uname -r)"
           host="$(uname -n)"                 # always "localhost" in the guest — not an identity
-          # arch/kernel/host all come from the image, so they are IDENTICAL across VMs by
-          # construction and prove nothing about freshness on their own. boot_id is generated
-          # by the kernel at boot, so a value unique to this run is real evidence of a distinct
-          # boot. (If we ever resume VMs from a snapshot, boot_id repeats by design — restate
-          # the claim then rather than reading a repeat as a failure.)
+          # NOTHING the guest can read about itself distinguishes one MicroVM from another.
+          # Every VM is restored from a single build snapshot, so arch/kernel/host and even
+          # boot_id — which the kernel writes once at boot, i.e. before the snapshot — are
+          # byte-identical across VMs. Measured, not assumed: two runs with distinct runner
+          # registrations reported boot_id cf74049d-e489-47a8-bbe1-5cdaa9ccb253 for both.
+          # We still record it, precisely so a reader can see it does NOT vary.
           boot_id="$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo unknown)"
           if [ "$boot_id" = "unknown" ]; then
-            boot_note="(unavailable — this run carries no evidence of a distinct boot)"
-            boot_claim="_No boot id: this run does not, on its own, show the VM was fresh._"
+            boot_note="(unavailable)"
           else
-            boot_note="(kernel-generated at boot — differs on every fresh VM)"
-            boot_claim="_Freshness rests on the boot id: compare it against another run's._"
+            boot_note="(identical on every VM — written before the build snapshot)"
+          fi
+          # The VM's actual identity can only come from the control plane, which is the one
+          # party that knows which VM it launched. It arrives with the JIT config and the
+          # launcher puts it in the runner's environment.
+          vm_id="${MAYFLY_MICROVM_ID:-unknown}"
+          if [ "$vm_id" = "unknown" ]; then
+            vm_note="(not supplied — control plane predates VM-identity injection)"
+            vm_claim="_No MicroVM id: this run does not show which VM it ran on._"
+          else
+            vm_note="(assigned by AWS per RunMicrovm call — one per job)"
+            vm_claim="_Freshness rests on the MicroVM id: compare it against another run's, and against the control plane's own record._"
           fi
           # /tmp is NOT empty — but not because of leftover state. Observed entries are the
           # Actions runner's own .NET diagnostic sockets (clr-debug-pipe-*, dotnet-diagnostic-*),
@@ -45,7 +55,7 @@ jobs:
           # an origin we have not checked.
           tmp_files="$(ls -A /tmp 2>/dev/null | wc -l | tr -d ' ')"
           tmp_entries="$(ls -A /tmp 2>/dev/null | sort | tr '\n' ' ' | sed 's/ $//')"
-          echo "arch=$arch kernel=$kernel host=$host boot_id=$boot_id tmp=$tmp_files [$tmp_entries]"
+          echo "arch=$arch kernel=$kernel host=$host vm=$vm_id boot_id=$boot_id tmp=$tmp_files [$tmp_entries]"
           end=$(date +%s.%N)
           dur_ms=$(awk "BEGIN{printf \"%d\", ($end-$start)*1000}")
 
@@ -59,19 +69,20 @@ jobs:
             echo "| kernel | \`Linux $kernel\` (from the image — same on every VM) |"
             echo "| host | \`$host\` (the guest hostname — same on every VM, not an identity) |"
             echo "| runner | \`${RUNNER_NAME:-unknown}\` |"
+            echo "| **MicroVM id** | \`$vm_id\` $vm_note |"
             echo "| boot id | \`$boot_id\` $boot_note |"
             echo "| commit | \`${GITHUB_SHA:0:7}\` |"
             echo "| /tmp at start | \`$tmp_files\` entries: \`${tmp_entries:-<none>}\` |"
             echo ""
             echo "_This VM existed for exactly one job. It no longer exists._"
-            echo "$boot_claim"
+            echo "$vm_claim"
           } >> "$GITHUB_STEP_SUMMARY"
 
           # Machine-readable receipt for the live site (best-effort; skip if API unset).
           if [ -n "${API:-}" ]; then
             base="${API%/}"   # strip any trailing slash
-            payload=$(printf '{"id":"%s","host":"%s","arch":"%s","kernel":"%s","boot":"%s","image":"mayfly-runner","sha":"%s","durMs":%s,"tmp":%s}' \
-              "$GITHUB_RUN_ID" "${RUNNER_NAME:-$host}" "$arch" "$kernel" "$boot_id" "${GITHUB_SHA:0:7}" "$dur_ms" "$tmp_files")
+            payload=$(printf '{"id":"%s","host":"%s","arch":"%s","kernel":"%s","vm":"%s","boot":"%s","image":"mayfly-runner","sha":"%s","durMs":%s,"tmp":%s}' \
+              "$GITHUB_RUN_ID" "${RUNNER_NAME:-$host}" "$arch" "$kernel" "$vm_id" "$boot_id" "${GITHUB_SHA:0:7}" "$dur_ms" "$tmp_files")
             curl -fsS -X POST "$base/receipt" \
               -H "authorization: Bearer ${TOKEN:-}" \
               -H "content-type: application/json" \
