@@ -144,43 +144,60 @@
 
   const runs = [];
   const rid = () => 'mayfly-' + (100000000 + Math.floor(Math.random() * 899999999));
-  // One kernel, not a random pick: every VM boots the same image, so the kernel is the same
-  // on all of them. Only the boot id varies per VM.
   // One kernel AND one boot id across every mock run — both are baked into the build
   // snapshot every VM restores from, so in reality neither varies. Only the MicroVM id,
   // which the control plane assigns per launch, differs run to run.
   const KERNEL = '6.1.166';
   const BOOT_ID = 'cf74049d-e489-47a8-bbe1-5cdaa9ccb253';
-  const vmId = () => 'mvm-' + Math.random().toString(36).slice(2, 12);
+  // Self-evidently fake. A realistic-looking "mvm-k3f9a2x8q1" rendered next to "one per job"
+  // presents an invented AWS resource id as evidence, which is the exact failure this page
+  // is meant to stop making.
+  let mockSeq = 0;
+  const vmId = () => 'mvm-SIMULATED-' + String(++mockSeq).padStart(4, '0');
   const short = () => Math.random().toString(16).slice(2, 9);
 
   function fmtDur(ms){ return (ms/1000).toFixed(1)+'s'; }
+  // Every field below originates inside the guest (uname, env vars) and reaches us via
+  // /receipt without validation. This page's whole premise is that the guest is not to be
+  // trusted, so its output must never be interpolated into markup unescaped.
+  function esc(v){
+    return String(v ?? '').replace(/[&<>"']/g, c =>
+      ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+  }
   function card(r){
     const cls = r.state==='destroyed'?'done':(r.state==='queued'||r.state==='booting'?'':'running');
     const badge = r.state==='destroyed'
       ? '<span class="badge done">terminated ✓</span>'
-      : `<span class="badge running">${r.state}</span>`;
+      : `<span class="badge running">${esc(r.state)}</span>`;
     return `<div class="card ${cls}">
-      <div class="top"><span class="vmid">${r.id}</span>${badge}</div>
+      <div class="top"><span class="vmid">${esc(r.id)}</span>${badge}</div>
       <div class="grid">
-        <div><span>arch</span> <b>${r.arch}</b></div>
-        <div><span>kernel</span> <b>Linux ${r.kernel}</b></div>
-        <div><span>image</span> <b>${r.image}</b></div>
-        <div><span>commit</span> <b>${r.sha}</b></div>
+        <div><span>arch</span> <b>${esc(r.arch)}</b></div>
+        <div><span>kernel</span> <b>Linux ${esc(r.kernel)}</b></div>
+        <div><span>image</span> <b>${esc(r.image)}</b></div>
+        <div><span>commit</span> <b>${esc(r.sha)}</b></div>
         <div><span>duration</span> <b>${r.dur?fmtDur(r.dur):'…'}</b></div>
-        <div><span>at</span> <b>${r.at}</b></div>
-        ${r.tmp!=null ? `<div><span>/tmp at start</span> <b>${r.tmp} entries</b></div>`:''}
+        <div><span>at</span> <b>${esc(r.at)}</b></div>
+        ${r.tmp!=null ? `<div><span>/tmp at start</span> <b>${esc(r.tmp)} entries</b></div>`:''}
+        ${r.boot ? `<div><span>boot id</span> <b>${esc(String(r.boot).slice(0,8))}…</b> <span>same on every VM</span></div>`:''}
       </div>
       ${r.state==='destroyed' ? proof(r):''}
     </div>`;
   }
-  // arch/kernel/image are identical on every VM by construction, so they are not evidence of
-  // freshness. The boot id is: the kernel generates it at boot, so a value unique to this run
-  // means a distinct boot. Say only what the receipt actually shows.
+  // arch/kernel/image are identical on every VM by construction, and so is boot_id — it is
+  // written at boot, which happens before the build snapshot every VM restores from. Measured:
+  // three runs with distinct runner registrations all reported the same boot_id. The MicroVM
+  // id is the only distinguishing value, and it comes from the control plane, not the guest.
+  // Say only what the receipt actually shows.
   function proof(r){
+    if (!LIVE) return `<div class="proof">simulated — no MicroVM was launched; ids on this card are fabricated</div>`;
+    // Name the actual chain. The VM did not learn its id from AWS: the control plane was
+    // told by RunMicrovm, passed it to the VM, and the VM echoed it into this receipt.
+    // Calling it "AWS-assigned" as reported by the guest is the same circularity this
+    // page exists to remove.
     const vm = r.vm && r.vm!=='unknown'
-      ? ` · MicroVM <b>${r.vm}</b> — assigned by AWS when this VM was launched, one per job`
-      : '';
+      ? ` · MicroVM <b>${esc(r.vm)}</b> — the control plane gave this VM that id at launch and the VM echoed it back`
+      : ' · no MicroVM id in this receipt — nothing here identifies which VM ran it';
     return `<div class="proof">isolation: <b>own kernel</b>${vm} · VM existed for exactly one job, then <b>gone</b></div>`;
   }
   function render(){
