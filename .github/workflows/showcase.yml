@@ -24,17 +24,19 @@ jobs:
           arch="$(uname -m)"                 # aarch64 on Graviton
           kernel="$(uname -r)"
           host="$(uname -n)"                 # always "localhost" in the guest — not an identity
-          # NOTHING the guest can read about itself distinguishes one MicroVM from another.
-          # Every VM is restored from a single build snapshot, so arch/kernel/host and even
-          # boot_id — which the kernel writes once at boot, i.e. before the snapshot — are
-          # byte-identical across VMs. Measured, not assumed: two runs with distinct runner
-          # registrations reported boot_id cf74049d-e489-47a8-bbe1-5cdaa9ccb253 for both.
-          # We still record it, precisely so a reader can see it does NOT vary.
+          # NOTHING the guest can read about itself reliably distinguishes one MicroVM from
+          # another. arch/kernel/host come from the image, so they never vary. boot_id is
+          # written by the kernel at boot — before the build snapshot every VM restores
+          # from — so it tracks the snapshot, not the VM. Measured across 7 runs: three
+          # shared cf74049d…, then two VMs with *different* control-plane ids both reported
+          # 78869c81…, and a later pair differed. So it sometimes collides across distinct
+          # VMs and sometimes varies. A value that can collide cannot prove distinctness,
+          # however often it happens to differ. Recorded so a reader can check that claim.
           boot_id="$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo unknown)"
           if [ "$boot_id" = "unknown" ]; then
             boot_note="(unavailable)"
           else
-            boot_note="(identical on every VM — written before the build snapshot)"
+            boot_note="(tracks the image snapshot, not this VM — observed shared across distinct VMs)"
           fi
           # The VM's actual identity can only come from the control plane, which is the one
           # party that knows which VM it launched. It arrives with the JIT config and the
