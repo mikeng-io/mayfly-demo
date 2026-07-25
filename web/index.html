@@ -180,17 +180,16 @@
         <div><span>duration</span> <b>${r.dur?fmtDur(r.dur):'…'}</b></div>
         <div><span>at</span> <b>${esc(r.at)}</b></div>
         ${r.tmp!=null ? `<div><span>/tmp at start</span> <b>${esc(r.tmp)} entries</b></div>`:''}
-        ${r.boot ? `<div><span>boot id</span> <b>${esc(String(r.boot).slice(0,8))}…</b> <span>snapshot-level, not per-VM</span></div>`:''}
+        ${r.boot ? `<div><span>boot id</span> <b>${esc(String(r.boot).slice(0,8))}…</b> <span>not a VM identifier</span></div>`:''}
       </div>
       ${r.state==='destroyed' ? proof(r):''}
     </div>`;
   }
-  // arch/kernel/image are identical on every VM by construction. boot_id is written before
-  // the build snapshot every VM restores from, so it tracks the snapshot: measured across 7
-  // runs it collided across two VMs with different control-plane ids, then varied for a later
-  // pair. Something that can collide cannot prove distinctness. The MicroVM id is the only
-  // distinguishing value, and it comes from the control plane, not the guest. Say only what
-  // the receipt actually shows.
+  // arch/kernel/image are identical on every VM by construction. boot_id is unreliable: across
+  // 7 runs it collided across two VMs with different control-plane ids, then varied for a later
+  // pair — so it can neither be trusted to match nor to differ, and something that can collide
+  // cannot prove distinctness. The MicroVM id is the only distinguishing value, and it comes
+  // from the control plane, not the guest. Say only what the receipt actually shows.
   function proof(r){
     if (!LIVE) return `<div class="proof">simulated — no MicroVM was launched; ids on this card are fabricated</div>`;
     // Name the actual chain. The VM did not learn its id from AWS: the control plane was
@@ -217,7 +216,7 @@
   // --- mock: simulate the full lifecycle over ~6s ---
   async function mockRun(){
     const r = { id: rid(), arch:'aarch64', kernel: KERNEL,
-      vm: vmId(), boot: BOOT_ID, tmp: 6, // mirrors live receipts: new VM id, constant boot id
+      vm: vmId(), boot: BOOT_ID, tmp: 6, // new VM id per run; boot id held fixed (see above)
       image:'mayfly-runner', sha: short(), at: new Date().toLocaleTimeString(), state:'queued', t0: performance.now() };
     runs.unshift(r); if (runs.length>8) runs.pop();
     const steps = [['queued',700],['booting',1600],['running',2200],['reporting',700],['destroyed',0]];

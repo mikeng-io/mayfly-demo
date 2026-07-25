@@ -26,17 +26,20 @@ jobs:
           host="$(uname -n)"                 # always "localhost" in the guest — not an identity
           # NOTHING the guest can read about itself reliably distinguishes one MicroVM from
           # another. arch/kernel/host come from the image, so they never vary. boot_id is
-          # written by the kernel at boot — before the build snapshot every VM restores
-          # from — so it tracks the snapshot, not the VM. Measured across 7 runs: three
-          # shared cf74049d…, then two VMs with *different* control-plane ids both reported
-          # 78869c81…, and a later pair differed. So it sometimes collides across distinct
-          # VMs and sometimes varies. A value that can collide cannot prove distinctness,
-          # however often it happens to differ. Recorded so a reader can check that claim.
+          # written by the kernel at boot, before the build snapshot a VM may be restored
+          # from. Measured across 7 runs: three shared cf74049d…, then two VMs with
+          # *different* control-plane ids both reported 78869c81…, and a later pair differed
+          # from each other. So it sometimes collides across distinct VMs and sometimes
+          # varies — we have not established the mechanism (a plausible one is that some
+          # VMs cold-boot instead of restoring, but intra-version variance rules out
+          # "it identifies the snapshot"). Either way a value that CAN collide cannot prove
+          # distinctness, however often it happens to differ. Recorded so a reader can
+          # check that for themselves.
           boot_id="$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo unknown)"
           if [ "$boot_id" = "unknown" ]; then
             boot_note="(unavailable)"
           else
-            boot_note="(tracks the image snapshot, not this VM — observed shared across distinct VMs)"
+            boot_note="(not a reliable VM identifier — observed shared across two distinct VMs)"
           fi
           # The VM's actual identity can only come from the control plane, which is the one
           # party that knows which VM it launched. It arrives with the JIT config and the

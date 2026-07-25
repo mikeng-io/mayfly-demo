@@ -151,10 +151,11 @@ export async function handler(event: Evt) {
           host: r.host,
           arch: r.arch,
           kernel: r.kernel,
-          // Control-plane-assigned MicroVM id — the only field that distinguishes one VM
-          // from another. Everything the guest can read about itself (kernel, hostname,
-          // even boot_id) is identical across VMs, because they all restore from one
-          // build snapshot. Defaulted: the doc client rejects undefined attribute values.
+          // Control-plane-assigned MicroVM id — the only field here that reliably
+          // distinguishes one VM from another. kernel and hostname come from the image so
+          // they never vary; boot_id has been observed shared across two VMs with different
+          // control-plane ids, so it cannot be trusted to differ either.
+          // Defaulted: the doc client rejects undefined attribute values.
           vm: r.vm ?? 'unknown',
           boot: r.boot ?? 'unknown',
           image: r.image ?? 'mayfly-runner',
