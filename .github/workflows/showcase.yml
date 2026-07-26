@@ -23,10 +23,47 @@ jobs:
           start=$(date +%s.%N)
           arch="$(uname -m)"                 # aarch64 on Graviton
           kernel="$(uname -r)"
-          host="$(uname -n)"
-          # Proof this is a fresh, isolated VM: our own kernel + an empty workspace.
+          host="$(uname -n)"                 # always "localhost" in the guest — not an identity
+          # NOTHING the guest can read about itself reliably distinguishes one MicroVM from
+          # another. arch/kernel/host come from the image, so they never vary. boot_id is
+          # written by the kernel at boot, before the build snapshot a VM may be restored
+          # from. Measured across 7 runs: three shared cf74049d…, then two VMs with
+          # *different* control-plane ids both reported 78869c81…, and a later pair differed
+          # from each other. So it sometimes collides across distinct VMs and sometimes
+          # varies — we have not established the mechanism (a plausible one is that some
+          # VMs cold-boot instead of restoring, but intra-version variance rules out
+          # "it identifies the snapshot"). Either way a value that CAN collide cannot prove
+          # distinctness, however often it happens to differ. Recorded so a reader can
+          # check that for themselves.
+          boot_id="$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo unknown)"
+          if [ "$boot_id" = "unknown" ]; then
+            boot_note="(unavailable)"
+          else
+            boot_note="(not a reliable VM identifier — observed shared across two distinct VMs)"
+          fi
+          # The VM's actual identity can only come from the control plane, which is the one
+          # party that knows which VM it launched. It arrives with the JIT config and the
+          # launcher puts it in the runner's environment.
+          vm_id="${MAYFLY_MICROVM_ID:-unknown}"
+          if [ "$vm_id" = "unknown" ]; then
+            vm_note="(not supplied — either the VM image or the control plane predates identity injection)"
+            vm_claim="_No MicroVM id: this run does not show which VM it ran on._"
+          else
+            vm_note="(the control plane gave this VM its id at launch; AWS assigns one per RunMicrovm call)"
+            # Don't imply a reader can check the control-plane side: the attestation table is
+            # private, has no read endpoint, and after the IAM narrowing the writing role has
+            # no GetItem. Claim only what this page can actually back up.
+            vm_claim="_Compare this id against another run's: a different id each time is what distinct VMs look like. The control plane recorded the same pairing before this job started, though that record is not yet exposed for public verification._"
+          fi
+          # /tmp is NOT empty — but not because of leftover state. Observed entries are the
+          # Actions runner's own .NET diagnostic sockets (clr-debug-pipe-*, dotnet-diagnostic-*),
+          # created by the listener and worker processes in THIS VM during THIS job; the PIDs
+          # are embedded in the names. So the count is never 0, and nothing in it came from a
+          # prior job. List what is actually there rather than asserting either emptiness or
+          # an origin we have not checked.
           tmp_files="$(ls -A /tmp 2>/dev/null | wc -l | tr -d ' ')"
-          echo "arch=$arch kernel=$kernel host=$host tmp=$tmp_files"
+          tmp_entries="$(ls -A /tmp 2>/dev/null | sort | tr '\n' ' ' | sed 's/ $//')"
+          echo "arch=$arch kernel=$kernel host=$host vm=$vm_id boot_id=$boot_id tmp=$tmp_files [$tmp_entries]"
           end=$(date +%s.%N)
           dur_ms=$(awk "BEGIN{printf \"%d\", ($end-$start)*1000}")
 
@@ -37,19 +74,23 @@ jobs:
             echo "| field | value |"
             echo "|---|---|"
             echo "| arch | \`$arch\` |"
-            echo "| kernel | \`Linux $kernel\` |"
-            echo "| host | \`$host\` |"
+            echo "| kernel | \`Linux $kernel\` (from the image — same on every VM) |"
+            echo "| host | \`$host\` (the guest hostname — same on every VM, not an identity) |"
+            echo "| runner | \`${RUNNER_NAME:-unknown}\` |"
+            echo "| **MicroVM id** | \`$vm_id\` $vm_note |"
+            echo "| boot id | \`$boot_id\` $boot_note |"
             echo "| commit | \`${GITHUB_SHA:0:7}\` |"
-            echo "| /tmp entries at start | \`$tmp_files\` (fresh) |"
+            echo "| /tmp at start | \`$tmp_files\` entries: \`${tmp_entries:-<none>}\` |"
             echo ""
             echo "_This VM existed for exactly one job. It no longer exists._"
+            echo "$vm_claim"
           } >> "$GITHUB_STEP_SUMMARY"
 
           # Machine-readable receipt for the live site (best-effort; skip if API unset).
           if [ -n "${API:-}" ]; then
             base="${API%/}"   # strip any trailing slash
-            payload=$(printf '{"id":"%s","host":"%s","arch":"%s","kernel":"%s","image":"mayfly-runner","sha":"%s","durMs":%s,"tmp":%s}' \
-              "$GITHUB_RUN_ID" "${RUNNER_NAME:-$host}" "$arch" "$kernel" "${GITHUB_SHA:0:7}" "$dur_ms" "$tmp_files")
+            payload=$(printf '{"id":"%s","host":"%s","arch":"%s","kernel":"%s","vm":"%s","boot":"%s","image":"mayfly-runner","sha":"%s","durMs":%s,"tmp":%s}' \
+              "$GITHUB_RUN_ID" "${RUNNER_NAME:-$host}" "$arch" "$kernel" "$vm_id" "$boot_id" "${GITHUB_SHA:0:7}" "$dur_ms" "$tmp_files")
             curl -fsS -X POST "$base/receipt" \
               -H "authorization: Bearer ${TOKEN:-}" \
               -H "content-type: application/json" \

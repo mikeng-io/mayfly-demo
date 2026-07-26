@@ -118,9 +118,14 @@ export async function handler(event: Evt) {
       }),
     );
     const runs = (res.Items ?? []).map((i) => ({
-      id: String(i.host ?? i.id ?? '').slice(0, 12) || 'unknown',
+      // Full runner name. Truncating to 12 chars rendered distinct VMs
+      // (mayfly-89544147766 vs mayfly-89544261359) as an identical "mayfly-89544".
+      id: String(i.host ?? i.id ?? '').slice(0, 64) || 'unknown',
       arch: i.arch,
       kernel: i.kernel,
+      vm: i.vm,
+      boot: i.boot,
+      tmp: i.tmp,
       image: i.image,
       sha: i.sha,
       dur: i.durMs,
@@ -146,6 +151,13 @@ export async function handler(event: Evt) {
           host: r.host,
           arch: r.arch,
           kernel: r.kernel,
+          // Control-plane-assigned MicroVM id — the only field here that reliably
+          // distinguishes one VM from another. kernel and hostname come from the image so
+          // they never vary; boot_id has been observed shared across two VMs with different
+          // control-plane ids, so it cannot be trusted to differ either.
+          // Defaulted: the doc client rejects undefined attribute values.
+          vm: r.vm ?? 'unknown',
+          boot: r.boot ?? 'unknown',
           image: r.image ?? 'mayfly-runner',
           sha: r.sha,
           durMs: r.durMs,

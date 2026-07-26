@@ -82,7 +82,8 @@
   <p class="eyebrow"><span class="dot"></span> Mayfly · live demo</p>
   <h1>Watch a CI job run in a MicroVM that's already gone.</h1>
   <p class="lede">Click the button. A <b>fresh, single-use AWS Lambda MicroVM</b> boots in your CI, runs one job,
-    prints its own kernel fingerprint, and is <b>destroyed</b> — its own isolated kernel, nothing shared, nothing left behind.</p>
+    reports the <b>MicroVM id</b> AWS assigned it at launch, and is <b>destroyed</b> — its own isolated kernel, nothing shared, nothing left behind.
+    Trigger twice: a different MicroVM id each time is what a fresh VM looks like.</p>
 
   <div class="cta">
     <button class="trigger" id="go">Trigger a run →</button>
@@ -143,27 +144,62 @@
 
   const runs = [];
   const rid = () => 'mayfly-' + (100000000 + Math.floor(Math.random() * 899999999));
-  const kernels = ['6.1.112','6.1.97','6.1.75','6.5.0'];
+  // One kernel across every mock run — it comes from the image, so it never varies. One
+  // boot id too: it is snapshot-level, and holding it fixed shows why it cannot identify a
+  // VM (real runs have been observed sharing one across distinct VMs). Only the MicroVM id,
+  // which the control plane assigns per launch, differs run to run.
+  const KERNEL = '6.1.166';
+  const BOOT_ID = 'cf74049d-e489-47a8-bbe1-5cdaa9ccb253';
+  // Self-evidently fake. A realistic-looking "mvm-k3f9a2x8q1" rendered next to "one per job"
+  // presents an invented AWS resource id as evidence, which is the exact failure this page
+  // is meant to stop making.
+  let mockSeq = 0;
+  const vmId = () => 'mvm-SIMULATED-' + String(++mockSeq).padStart(4, '0');
   const short = () => Math.random().toString(16).slice(2, 9);
 
   function fmtDur(ms){ return (ms/1000).toFixed(1)+'s'; }
+  // Every field below originates inside the guest (uname, env vars) and reaches us via
+  // /receipt without validation. This page's whole premise is that the guest is not to be
+  // trusted, so its output must never be interpolated into markup unescaped.
+  function esc(v){
+    return String(v ?? '').replace(/[&<>"']/g, c =>
+      ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+  }
   function card(r){
     const cls = r.state==='destroyed'?'done':(r.state==='queued'||r.state==='booting'?'':'running');
     const badge = r.state==='destroyed'
       ? '<span class="badge done">terminated ✓</span>'
-      : `<span class="badge running">${r.state}</span>`;
+      : `<span class="badge running">${esc(r.state)}</span>`;
     return `<div class="card ${cls}">
-      <div class="top"><span class="vmid">${r.id}</span>${badge}</div>
+      <div class="top"><span class="vmid">${esc(r.id)}</span>${badge}</div>
       <div class="grid">
-        <div><span>arch</span> <b>${r.arch}</b></div>
-        <div><span>kernel</span> <b>Linux ${r.kernel}</b></div>
-        <div><span>image</span> <b>${r.image}</b></div>
-        <div><span>commit</span> <b>${r.sha}</b></div>
+        <div><span>arch</span> <b>${esc(r.arch)}</b></div>
+        <div><span>kernel</span> <b>Linux ${esc(r.kernel)}</b></div>
+        <div><span>image</span> <b>${esc(r.image)}</b></div>
+        <div><span>commit</span> <b>${esc(r.sha)}</b></div>
         <div><span>duration</span> <b>${r.dur?fmtDur(r.dur):'…'}</b></div>
-        <div><span>at</span> <b>${r.at}</b></div>
+        <div><span>at</span> <b>${esc(r.at)}</b></div>
+        ${r.tmp!=null ? `<div><span>/tmp at start</span> <b>${esc(r.tmp)} entries</b></div>`:''}
+        ${r.boot ? `<div><span>boot id</span> <b>${esc(String(r.boot).slice(0,8))}…</b> <span>not a VM identifier</span></div>`:''}
       </div>
-      ${r.state==='destroyed' ? `<div class="proof">isolation: <b>own kernel</b> · empty /tmp · no prior state · VM existed for exactly one job, then <b>gone</b></div>`:''}
+      ${r.state==='destroyed' ? proof(r):''}
     </div>`;
+  }
+  // arch/kernel/image are identical on every VM by construction. boot_id is unreliable: across
+  // 7 runs it collided across two VMs with different control-plane ids, then varied for a later
+  // pair — so it can neither be trusted to match nor to differ, and something that can collide
+  // cannot prove distinctness. The MicroVM id is the only distinguishing value, and it comes
+  // from the control plane, not the guest. Say only what the receipt actually shows.
+  function proof(r){
+    if (!LIVE) return `<div class="proof">simulated — no MicroVM was launched; ids on this card are fabricated</div>`;
+    // Name the actual chain. The VM did not learn its id from AWS: the control plane was
+    // told by RunMicrovm, passed it to the VM, and the VM echoed it into this receipt.
+    // Calling it "AWS-assigned" as reported by the guest is the same circularity this
+    // page exists to remove.
+    const vm = r.vm && r.vm!=='unknown'
+      ? ` · MicroVM <b>${esc(r.vm)}</b> — the control plane gave this VM that id at launch and the VM echoed it back`
+      : ' · no MicroVM id in this receipt — nothing here identifies which VM ran it';
+    return `<div class="proof">isolation: <b>own kernel</b>${vm} · VM existed for exactly one job, then <b>gone</b></div>`;
   }
   function render(){
     feed.innerHTML = runs.length ? runs.map(card).join('') : '<div class="empty">No runs yet — trigger one above.</div>';
@@ -179,7 +215,8 @@
 
   // --- mock: simulate the full lifecycle over ~6s ---
   async function mockRun(){
-    const r = { id: rid(), arch:'aarch64', kernel: kernels[Math.random()*kernels.length|0],
+    const r = { id: rid(), arch:'aarch64', kernel: KERNEL,
+      vm: vmId(), boot: BOOT_ID, tmp: 6, // new VM id per run; boot id held fixed (see above)
       image:'mayfly-runner', sha: short(), at: new Date().toLocaleTimeString(), state:'queued', t0: performance.now() };
     runs.unshift(r); if (runs.length>8) runs.pop();
     const steps = [['queued',700],['booting',1600],['running',2200],['reporting',700],['destroyed',0]];
