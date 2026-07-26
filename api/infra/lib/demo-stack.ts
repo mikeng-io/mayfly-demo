@@ -3,8 +3,12 @@ import { Construct } from 'constructs';
 import * as path from 'node:path';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
+
+/** Must match MayflyStack's ATTESTATIONS_TABLE_PARAM — where the table name is published. */
+const ATTESTATIONS_TABLE_PARAM = '/mayfly/attestationsTable';
 
 export interface DemoStackProps extends StackProps {
   ghOwner: string;
@@ -57,11 +61,42 @@ export class DemoStack extends Stack {
         RECEIPT_TOKEN_PARAM: receiptToken.parameterName,
         COOLDOWN_SECONDS: '15',
         ALLOW_ORIGIN: props.allowOrigin ?? '*',
+        ATTESTATIONS_TABLE_PARAM: ATTESTATIONS_TABLE_PARAM,
       },
     });
     table.grantReadWriteData(fn);
     ghToken.grantRead(fn);
     receiptToken.grantRead(fn);
+
+    // Read-only access to MayflyStack's attestation table, so this API can check a guest's
+    // self-reported MicroVM id against the control plane's own record. Granted by name
+    // pattern rather than a CloudFormation import: the table is RETAIN and outlives that
+    // stack, and an import would block ever changing it. GetItem only — a verifier that can
+    // write the evidence it verifies is not a verifier.
+    fn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['dynamodb:GetItem'],
+        resources: [
+          Stack.of(this).formatArn({
+            service: 'dynamodb',
+            resource: 'table',
+            resourceName: 'MayflyStack-AttestationsTable*',
+          }),
+        ],
+      }),
+    );
+    fn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['ssm:GetParameter'],
+        resources: [
+          Stack.of(this).formatArn({
+            service: 'ssm',
+            resource: 'parameter',
+            resourceName: ATTESTATIONS_TABLE_PARAM.replace(/^\//, ''),
+          }),
+        ],
+      }),
+    );
 
     const url = fn.addFunctionUrl({ authType: lambda.FunctionUrlAuthType.NONE });
 
