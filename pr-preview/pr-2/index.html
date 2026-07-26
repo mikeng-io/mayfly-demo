@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mayfly — live MicroVM CI demo</title>
+<style>
+  :root{
+    --ground:#12100e; --panel:#1b1815; --panel-2:#211d19; --ink:#efe9e2; --muted:#a99e91;
+    --faint:#776d61; --border:#2a2621; --border-2:#3a352e; --ember:#e87a3c; --ember-2:#f0955c;
+    --ok:#5cb85c; --ok-bg:#12240f; --run:#e0b24a; --run-bg:#251d0d; --gone:#7d7367;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 16px 40px rgba(0,0,0,.4);
+  }
+  @media (prefers-color-scheme:light){:root{
+    --ground:#f8f7f5; --panel:#fff; --panel-2:#f1efec; --ink:#181410; --muted:#63594e;
+    --faint:#938a7e; --border:#e4dfd8; --border-2:#cfc7bc; --ember:#c2521c; --ember-2:#a8460f;
+    --ok:#3c7a3c; --ok-bg:#e0efe0; --run:#9a6a15; --run-bg:#f4ead4; --gone:#a49a8d;
+    --shadow:0 1px 2px rgba(24,20,16,.05),0 12px 30px rgba(24,20,16,.08);
+  }}
+  :root[data-theme="light"]{--ground:#f8f7f5;--panel:#fff;--panel-2:#f1efec;--ink:#181410;--muted:#63594e;--faint:#938a7e;--border:#e4dfd8;--border-2:#cfc7bc;--ember:#c2521c;--ember-2:#a8460f;--ok:#3c7a3c;--ok-bg:#e0efe0;--run:#9a6a15;--run-bg:#f4ead4;--gone:#a49a8d;--shadow:0 1px 2px rgba(24,20,16,.05),0 12px 30px rgba(24,20,16,.08);}
+  :root[data-theme="dark"]{--ground:#12100e;--panel:#1b1815;--panel-2:#211d19;--ink:#efe9e2;--muted:#a99e91;--faint:#776d61;--border:#2a2621;--border-2:#3a352e;--ember:#e87a3c;--ember-2:#f0955c;--ok:#5cb85c;--ok-bg:#12240f;--run:#e0b24a;--run-bg:#251d0d;--gone:#7d7367;--shadow:0 1px 2px rgba(0,0,0,.4),0 16px 40px rgba(0,0,0,.4);}
+
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);line-height:1.55;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:960px;margin:0 auto;padding:clamp(24px,5vw,56px) clamp(16px,5vw,40px) 80px}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--ember);margin:0 0 14px;display:flex;align-items:center;gap:10px}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--ember);box-shadow:0 0 0 0 var(--ember);animation:pulse 2s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(232,122,60,.5)}70%{box-shadow:0 0 0 8px rgba(232,122,60,0)}100%{box-shadow:0 0 0 0 rgba(232,122,60,0)}}
+  h1{font-size:clamp(30px,5.6vw,50px);line-height:1.03;letter-spacing:-.025em;font-weight:850;margin:0 0 14px;text-wrap:balance}
+  .lede{font-size:clamp(16px,2.3vw,19px);color:var(--muted);max-width:60ch;margin:0 0 28px}
+  .lede b{color:var(--ink);font-weight:640}
+
+  .cta{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-bottom:14px}
+  button.trigger{background:var(--ember);color:#fff;border:0;border-radius:12px;padding:15px 26px;font-size:15.5px;font-weight:680;cursor:pointer;box-shadow:var(--shadow);transition:filter .15s,transform .05s}
+  button.trigger:hover{filter:brightness(1.08)} button.trigger:active{transform:translateY(1px)}
+  button.trigger:disabled{opacity:.55;cursor:not-allowed;filter:none}
+  .mode{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;padding:5px 10px;border-radius:999px;border:1px solid var(--border-2);color:var(--muted)}
+  .mode.live{color:var(--ok);border-color:var(--ok)} .mode.mock{color:var(--run);border-color:var(--run)}
+  .hint{font-size:13px;color:var(--faint);margin:0 0 40px}
+
+  h2{font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);font-weight:600;margin:0 0 16px;padding-bottom:9px;border-bottom:1px solid var(--border)}
+  section{margin-top:8px}
+
+  /* lifecycle strip */
+  .life{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:0 0 34px}
+  .step{border:1px solid var(--border);border-radius:10px;background:var(--panel);padding:12px 12px;text-align:center;position:relative;transition:border-color .3s,background .3s}
+  .step .k{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+  .step .v{font-size:13px;margin-top:4px;color:var(--muted)}
+  .step.on{border-color:var(--ember);background:var(--panel-2)} .step.on .v{color:var(--ink)}
+  .step.done{border-color:var(--ok)} .step.done .k{color:var(--ok)}
+  @media(max-width:620px){.life{grid-template-columns:repeat(2,1fr)}}
+
+  .feed{display:flex;flex-direction:column;gap:12px}
+  .card{border:1px solid var(--border);border-left:3px solid var(--gone);border-radius:12px;background:var(--panel);padding:14px 16px;box-shadow:var(--shadow);animation:rise .35s ease both}
+  .card.running{border-left-color:var(--run)} .card.done{border-left-color:var(--ok)}
+  @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .card .top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+  .vmid{font-family:var(--mono);font-size:13.5px;color:var(--ink);font-weight:600}
+  .badge{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;padding:4px 9px;border-radius:999px;border:1px solid var(--border-2);color:var(--muted);white-space:nowrap}
+  .badge.running{color:var(--run);border-color:var(--run);background:var(--run-bg)}
+  .badge.done{color:var(--ok);border-color:var(--ok);background:var(--ok-bg)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px 18px;margin-top:11px;font-family:var(--mono);font-size:12px}
+  .grid div span{color:var(--faint)} .grid div b{color:var(--ink);font-weight:600}
+  .proof{margin-top:11px;font-family:var(--mono);font-size:11.5px;color:var(--gone)}
+  .proof b{color:var(--ok)}
+  .empty{color:var(--faint);font-family:var(--mono);font-size:13px;padding:20px 0}
+
+  .how{margin-top:52px;border:1px solid var(--border);border-radius:14px;background:var(--panel);padding:22px 22px}
+  .how .flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-family:var(--mono);font-size:12.5px;color:var(--muted)}
+  .how .n{padding:6px 11px;border:1px solid var(--border-2);border-radius:8px;background:var(--panel-2);color:var(--ink);white-space:nowrap}
+  .how .arr{color:var(--ember)}
+  .how p{color:var(--muted);font-size:13.5px;margin:14px 0 0}
+  .foot{margin-top:44px;padding-top:16px;border-top:1px solid var(--border);font-family:var(--mono);font-size:12px;color:var(--faint);display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+  a{color:var(--ember)}
+</style>
+<script>window.MAYFLY_API='https://fc4ueyqlq7a5krr7vu73r2dcqq0ygoaa.lambda-url.ap-northeast-1.on.aws/';</script><!-- the Pages deploy injects window.MAYFLY_API here when the var is set -->
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow"><span class="dot"></span> Mayfly · live demo</p>
+  <h1>Watch a CI job run in a MicroVM that's already gone.</h1>
+  <p class="lede">Click the button. A <b>fresh, single-use AWS Lambda MicroVM</b> boots in your CI, runs one job,
+    reports the <b>MicroVM id</b> AWS assigned it at launch, and is <b>destroyed</b> — its own isolated kernel, nothing shared, nothing left behind.
+    Trigger twice: a different MicroVM id each time is what a fresh VM looks like.</p>
+
+  <div class="cta">
+    <button class="trigger" id="go">Trigger a run →</button>
+    <span class="mode" id="mode">…</span>
+  </div>
+  <p class="hint" id="hint">Each run is a brand-new Firecracker MicroVM on Graviton (arm64). It exists for one job, then it's gone.</p>
+
+  <section>
+    <h2>Live lifecycle</h2>
+    <div class="life" id="life">
+      <div class="step" data-s="queued"><div class="k">1 · queued</div><div class="v">workflow_job</div></div>
+      <div class="step" data-s="booting"><div class="k">2 · boot</div><div class="v">fresh MicroVM</div></div>
+      <div class="step" data-s="running"><div class="k">3 · running</div><div class="v">one job</div></div>
+      <div class="step" data-s="reporting"><div class="k">4 · receipt</div><div class="v">fingerprint</div></div>
+      <div class="step" data-s="destroyed"><div class="k">5 · destroyed</div><div class="v">VM terminated</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Recent runs</h2>
+    <div class="feed" id="feed"><div class="empty">No runs yet — trigger one above.</div></div>
+  </section>
+
+  <div class="how">
+    <div class="flow">
+      <span class="n">GitHub workflow_job</span><span class="arr">→</span>
+      <span class="n">Function URL</span><span class="arr">→</span>
+      <span class="n">SQS</span><span class="arr">→</span>
+      <span class="n">control Lambda</span><span class="arr">→</span>
+      <span class="n">run-microvm</span><span class="arr">→</span>
+      <span class="n">JIT runner</span><span class="arr">→</span>
+      <span class="n">terminate</span>
+    </div>
+    <p>The control plane provisions one MicroVM per queued job (auto-suspend off so it survives the job),
+      hands it a single-use JIT runner over the L7 endpoint, and reaps it on completion. A scheduled reconciler
+      reclaims anything a teardown ever misses. This page just shows the receipts each VM leaves behind.</p>
+  </div>
+
+  <div class="foot">
+    <span>Mayfly · ephemeral GitHub Actions runners on Lambda MicroVMs</span>
+    <span><a href="https://github.com/mikeng-io/mayfly">github.com/mikeng-io/mayfly</a></span>
+  </div>
+</div>
+
+<script>
+(() => {
+  // API base: ?api=https://… , or window.MAYFLY_API, else MOCK mode.
+  const API = new URLSearchParams(location.search).get('api') || window.MAYFLY_API || '';
+  const LIVE = !!API;
+  const feed = document.getElementById('feed');
+  const go = document.getElementById('go');
+  const life = document.getElementById('life');
+  const modeEl = document.getElementById('mode');
+  modeEl.textContent = LIVE ? 'live' : 'mock';
+  modeEl.classList.add(LIVE ? 'live' : 'mock');
+  if (!LIVE) document.getElementById('hint').textContent =
+    'Mock mode — no control plane wired yet. The lifecycle + receipts below are simulated; deploy Mayfly and set ?api=<url> for live runs.';
+
+  const runs = [];
+  const rid = () => 'mayfly-' + (100000000 + Math.floor(Math.random() * 899999999));
+  // One kernel across every mock run — it comes from the image, so it never varies. One
+  // boot id too: it is snapshot-level, and holding it fixed shows why it cannot identify a
+  // VM (real runs have been observed sharing one across distinct VMs). Only the MicroVM id,
+  // which the control plane assigns per launch, differs run to run.
+  const KERNEL = '6.1.166';
+  const BOOT_ID = 'cf74049d-e489-47a8-bbe1-5cdaa9ccb253';
+  // Self-evidently fake. A realistic-looking "mvm-k3f9a2x8q1" rendered next to "one per job"
+  // presents an invented AWS resource id as evidence, which is the exact failure this page
+  // is meant to stop making.
+  let mockSeq = 0;
+  const vmId = () => 'mvm-SIMULATED-' + String(++mockSeq).padStart(4, '0');
+  const short = () => Math.random().toString(16).slice(2, 9);
+
+  function fmtDur(ms){ return (ms/1000).toFixed(1)+'s'; }
+  // Every field below originates inside the guest (uname, env vars) and reaches us via
+  // /receipt without validation. This page's whole premise is that the guest is not to be
+  // trusted, so its output must never be interpolated into markup unescaped.
+  function esc(v){
+    return String(v ?? '').replace(/[&<>"']/g, c =>
+      ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+  }
+  function card(r){
+    const cls = r.state==='destroyed'?'done':(r.state==='queued'||r.state==='booting'?'':'running');
+    const badge = r.state==='destroyed'
+      ? '<span class="badge done">terminated ✓</span>'
+      : `<span class="badge running">${esc(r.state)}</span>`;
+    return `<div class="card ${cls}">
+      <div class="top"><span class="vmid">${esc(r.id)}</span>${badge}</div>
+      <div class="grid">
+        <div><span>arch</span> <b>${esc(r.arch)}</b></div>
+        <div><span>kernel</span> <b>Linux ${esc(r.kernel)}</b></div>
+        <div><span>image</span> <b>${esc(r.image)}</b></div>
+        <div><span>commit</span> <b>${esc(r.sha)}</b></div>
+        <div><span>duration</span> <b>${r.dur?fmtDur(r.dur):'…'}</b></div>
+        <div><span>at</span> <b>${esc(r.at)}</b></div>
+        ${r.tmp!=null ? `<div><span>/tmp at start</span> <b>${esc(r.tmp)} entries</b></div>`:''}
+        ${r.boot ? `<div><span>boot id</span> <b>${esc(String(r.boot).slice(0,8))}…</b> <span>not a VM identifier</span></div>`:''}
+      </div>
+      ${r.state==='destroyed' ? proof(r):''}
+    </div>`;
+  }
+  // arch/kernel/image are identical on every VM by construction. boot_id is unreliable: across
+  // 7 runs it collided across two VMs with different control-plane ids, then varied for a later
+  // pair — so it can neither be trusted to match nor to differ, and something that can collide
+  // cannot prove distinctness. The MicroVM id is the only distinguishing value, and it comes
+  // from the control plane, not the guest. Say only what the receipt actually shows.
+  // The receipt is written by the job, inside the VM — self-reported. The control plane wrote
+  // its own (microvmId -> runner) record when it launched the VM, before the job could emit
+  // anything. The API compares them and reports the verdict; ?vm= lets a reader redo it.
+  function corroboration(r){
+    const link = `${API.replace(/\/$/,'')}/attestation?vm=${encodeURIComponent(r.vm ?? '')}`;
+    if (r.corroborated === 'yes') return ` · <b>corroborated</b> by the control plane's own record (<a href="${esc(link)}">check it</a>)`;
+    if (r.corroborated === 'no') return ` · <b>MISMATCH</b> — the control plane recorded a different runner for this VM (<a href="${esc(link)}">check it</a>)`;
+    return ' · not corroborated — no control-plane record found for this VM';
+  }
+  function proof(r){
+    if (!LIVE) return `<div class="proof">simulated — no MicroVM was launched; ids on this card are fabricated</div>`;
+    // Name the actual chain. The VM did not learn its id from AWS: the control plane was
+    // told by RunMicrovm, passed it to the VM, and the VM echoed it into this receipt.
+    // Calling it "AWS-assigned" as reported by the guest is the same circularity this
+    // page exists to remove.
+    const vm = r.vm && r.vm!=='unknown'
+      ? ` · MicroVM <b>${esc(r.vm)}</b>${corroboration(r)}`
+      : ' · no MicroVM id in this receipt — nothing here identifies which VM ran it';
+    return `<div class="proof">isolation: <b>own kernel</b>${vm} · VM existed for exactly one job, then <b>gone</b></div>`;
+  }
+  function render(){
+    feed.innerHTML = runs.length ? runs.map(card).join('') : '<div class="empty">No runs yet — trigger one above.</div>';
+  }
+  function setLife(stage){
+    const order = ['queued','booting','running','reporting','destroyed'];
+    const i = order.indexOf(stage);
+    [...life.children].forEach((el,j)=>{
+      el.classList.toggle('on', j===i);
+      el.classList.toggle('done', j<i || stage==='destroyed');
+    });
+  }
+
+  // --- mock: simulate the full lifecycle over ~6s ---
+  async function mockRun(){
+    const r = { id: rid(), arch:'aarch64', kernel: KERNEL,
+      vm: vmId(), boot: BOOT_ID, tmp: 6, // new VM id per run; boot id held fixed (see above)
+      image:'mayfly-runner', sha: short(), at: new Date().toLocaleTimeString(), state:'queued', t0: performance.now() };
+    runs.unshift(r); if (runs.length>8) runs.pop();
+    const steps = [['queued',700],['booting',1600],['running',2200],['reporting',700],['destroyed',0]];
+    for (const [s,ms] of steps){ r.state=s; setLife(s); if(s==='destroyed') r.dur=performance.now()-r.t0; render(); if(ms) await new Promise(z=>setTimeout(z,ms)); }
+    setTimeout(()=>setLife(null),1500);
+  }
+
+  // --- live: POST /trigger, then poll GET /runs ---
+  async function liveTrigger(){
+    setLife('queued');
+    await fetch(API.replace(/\/$/,'') + '/trigger', { method:'POST' }).catch(()=>{});
+  }
+  async function poll(){
+    try{
+      const res = await fetch(API.replace(/\/$/,'') + '/runs');
+      const data = await res.json();
+      runs.length = 0; runs.push(...(data.runs||[]).slice(0,8));
+      const cur = runs.find(r=>r.state!=='destroyed');
+      setLife(cur ? cur.state : null);
+      render();
+    }catch{}
+  }
+
+  go.addEventListener('click', async () => {
+    go.disabled = true;
+    try { LIVE ? await liveTrigger() : await mockRun(); }
+    finally { setTimeout(()=>{ go.disabled=false; }, LIVE?1200:6800); }
+  });
+
+  render();
+  if (LIVE){ poll(); setInterval(poll, 3000); }
+})();
+</script>
+</body>
+</html>
