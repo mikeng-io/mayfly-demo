@@ -50,7 +50,10 @@ jobs:
             vm_claim="_No MicroVM id: this run does not show which VM it ran on._"
           else
             vm_note="(the control plane gave this VM its id at launch; AWS assigns one per RunMicrovm call)"
-            vm_claim="_Compare this id against another run's: a different id each time is what distinct VMs look like. The control plane holds the matching record._"
+            # Don't imply a reader can check the control-plane side: the attestation table is
+            # private, has no read endpoint, and after the IAM narrowing the writing role has
+            # no GetItem. Claim only what this page can actually back up.
+            vm_claim="_Compare this id against another run's: a different id each time is what distinct VMs look like. The control plane recorded the same pairing before this job started, though that record is not yet exposed for public verification._"
           fi
           # /tmp is NOT empty — but not because of leftover state. Observed entries are the
           # Actions runner's own .NET diagnostic sockets (clr-debug-pipe-*, dotnet-diagnostic-*),
