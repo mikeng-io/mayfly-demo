@@ -190,6 +190,15 @@
   // pair — so it can neither be trusted to match nor to differ, and something that can collide
   // cannot prove distinctness. The MicroVM id is the only distinguishing value, and it comes
   // from the control plane, not the guest. Say only what the receipt actually shows.
+  // The receipt is written by the job, inside the VM — self-reported. The control plane wrote
+  // its own (microvmId -> runner) record when it launched the VM, before the job could emit
+  // anything. The API compares them and reports the verdict; ?vm= lets a reader redo it.
+  function corroboration(r){
+    const link = `${API.replace(/\/$/,'')}/attestation?vm=${encodeURIComponent(r.vm ?? '')}`;
+    if (r.corroborated === 'yes') return ` · <b>corroborated</b> by the control plane's own record (<a href="${esc(link)}">check it</a>)`;
+    if (r.corroborated === 'no') return ` · <b>MISMATCH</b> — the control plane recorded a different runner for this VM (<a href="${esc(link)}">check it</a>)`;
+    return ' · not corroborated — no control-plane record found for this VM';
+  }
   function proof(r){
     if (!LIVE) return `<div class="proof">simulated — no MicroVM was launched; ids on this card are fabricated</div>`;
     // Name the actual chain. The VM did not learn its id from AWS: the control plane was
@@ -197,7 +206,7 @@
     // Calling it "AWS-assigned" as reported by the guest is the same circularity this
     // page exists to remove.
     const vm = r.vm && r.vm!=='unknown'
-      ? ` · MicroVM <b>${esc(r.vm)}</b> — the control plane gave this VM that id at launch and the VM echoed it back`
+      ? ` · MicroVM <b>${esc(r.vm)}</b>${corroboration(r)}`
       : ' · no MicroVM id in this receipt — nothing here identifies which VM ran it';
     return `<div class="proof">isolation: <b>own kernel</b>${vm} · VM existed for exactly one job, then <b>gone</b></div>`;
   }
